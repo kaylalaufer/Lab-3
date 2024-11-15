@@ -4,8 +4,8 @@ import xmlrpc.client
 class NodeBase:
     def __init__(self, account_file, initial_balance, node_name, coordinator_endpoint=None, peer_endpoints=None):
         self.account_file = account_file
-        self.initialize_account(initial_balance)
         self.node_name = node_name
+        self.initialize_account(initial_balance)
         self.state = None
         self.pending_transaction = None
         self.coordinator = xmlrpc.client.ServerProxy(coordinator_endpoint) if coordinator_endpoint else None
