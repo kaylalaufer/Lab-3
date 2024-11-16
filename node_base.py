@@ -13,12 +13,12 @@ class NodeBase:
 
     def initialize_account(self, initial_balance=0):
         """Initialize the account file with a specified starting balance."""
-        if not os.path.exists(self.account_file):
-            with open(self.account_file, "w") as f:
-                f.write(str(initial_balance))
-            print(f"{self.node_name}: Account initialized with balance {initial_balance}.")
-        else:
-            print(f"{self.node_name}: Account file already exists. Skipping initialization.")
+        #if not os.path.exists(self.account_file):
+        with open(self.account_file, "w") as f:
+            f.write(str(initial_balance))
+        print(f"{self.node_name}: Account initialized with balance {initial_balance}.")
+        """else:
+            print(f"{self.node_name}: Account file already exists. Skipping initialization.")"""
 
     def _read_account(self):
         """Read account balance from the file."""
@@ -41,29 +41,29 @@ class NodeBase:
     def prepare(self, transaction_id, amount):
         """Prepare phase: validate the transaction."""
         print(f"{self.node_name}: Received prepare request for transaction {transaction_id} with amount {amount}.")
+        self.state = "PREPARED"
+        self.pending_transaction = (transaction_id, amount)
         balance = self._read_account()
         if balance is None:
             print(f"{self.node_name}: Account does not exist for transaction {transaction_id}.")
             return False
-        elif balance >= amount:
-            self.state = "PREPARED"
-            self.pending_transaction = (transaction_id, amount)
-            print(f"{self.node_name}: Prepared for transaction {transaction_id}.")
-            return True
-        else:
+        elif amount < 0 and balance < abs(amount):  # Check for sufficient balance for withdrawal
             print(f"{self.node_name}: Insufficient funds for transaction {transaction_id}.")
             return False
+        print(f"{self.node_name}: Prepared for transaction {transaction_id}.")
+        return True
 
     def commit(self, transaction_id):
         """Commit the transaction."""
         print(f"{self.node_name}: Received commit request for transaction {transaction_id}.")
-        if self.state == "PREPARED" and self.pending_transaction:
+        if self.state == "PREPARED" and self.pending_transaction and self.pending_transaction[0] == transaction_id:
             _, amount = self.pending_transaction
             balance = self._read_account()
             if balance is None:
                 print(f"{self.node_name}: Cannot commit transaction {transaction_id}. Failed to read account.")
                 return False
-            self._write_account(balance - amount)
+            new_balance = balance + amount
+            self._write_account(new_balance)
             self.state = "COMMITTED"
             self.pending_transaction = None
             print(f"{self.node_name}: Transaction {transaction_id} committed successfully.")
@@ -75,22 +75,12 @@ class NodeBase:
     def abort(self, transaction_id):
         """Abort the transaction."""
         print(f"{self.node_name}: Received abort request for transaction {transaction_id}.")
-        if self.state == "PREPARED":
+        if self.state == "PREPARED" and self.pending_transaction and self.pending_transaction[0] == transaction_id:
             self.state = "ABORTED"
             self.pending_transaction = None
             print(f"{self.node_name}: Transaction {transaction_id} aborted.")
-        elif self.state == "ABORTED":
-            print(f"{self.node_name}: Transaction {transaction_id} already aborted.")
         else:
-            print(f"{self.node_name}: Cannot abort transaction {transaction_id}. Not in prepared state.")
+            print(f"{self.state} {self.pending_transaction}")
+            print(f"{self.node_name}: Cannot abort transaction {transaction_id}. Not in prepared state or transaction does not match.")
         self.state = None  # Reset state after abort
         return True
-
-    def communicate_with_coordinator(self, method, transaction_id=None, amount=None):
-        """Sends a request to the coordinator with fixed arguments."""
-        if not self.coordinator:
-            raise ValueError(f"{self.node_name}: Coordinator not configured.")
-        try:
-            return getattr(self.coordinator, method)(transaction_id, amount)
-        except AttributeError:
-            raise ValueError(f"{self.node_name}: Unknown method '{method}' requested.")

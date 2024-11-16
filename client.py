@@ -1,12 +1,11 @@
 import xmlrpc.client
 
-# Connect to the coordinator
 coordinator = xmlrpc.client.ServerProxy("http://localhost:8000")
 
-# Transaction 1: Withdraw from Account A
-result_withdraw = coordinator.execute_transaction("txn123", "A", -500)
-print(result_withdraw)  # Expected: "Transaction Committed" or "Transaction Aborted"
+# Transaction: Withdraw $500 from Account A, Deposit $500 into Account B
+result = coordinator.execute_transaction("txn1", {"A": -500, "B": 500})
+print(result)  # Expected: "Transaction Aborted"
 
-# Transaction 2: Deposit to Account B
-result_deposit = coordinator.execute_transaction("txn123", "B", 100)
-print(result_deposit)  # Expected: "Transaction Committed" or "Transaction Aborted"
+# Transaction: Withdraw $100 from Account A, Deposit 200 into Account B
+result2 = coordinator.execute_transaction("txn2", {"A": -100, "B": 200})
+print(result2)  # Expected: "Transaction Committed"
