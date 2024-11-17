@@ -14,6 +14,7 @@ def start_node3():
     server = SimpleXMLRPCServer(("localhost", 8002))
     node = Node3()
     server.register_instance(node)
+    server.logRequests = False  # Disable request logging
     print("Node-3 started and waiting for requests...")
     server.serve_forever()
 

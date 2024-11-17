@@ -1,11 +1,13 @@
 import os
 import xmlrpc.client
+import time
 
 class NodeBase:
     def __init__(self, account_file, initial_balance, node_name, coordinator_endpoint=None, peer_endpoints=None):
         self.account_file = account_file
         self.node_name = node_name
         self.initialize_account(initial_balance)
+        self.case = 0
         self.state = None
         self.pending_transaction = None
         self.coordinator = xmlrpc.client.ServerProxy(coordinator_endpoint) if coordinator_endpoint else None
@@ -13,26 +15,35 @@ class NodeBase:
 
     def initialize_account(self, initial_balance=0):
         """Initialize the account file with a specified starting balance."""
-        #if not os.path.exists(self.account_file):
-        with open(self.account_file, "w") as f:
-            f.write(str(initial_balance))
+        if self._read_account() == initial_balance:
+            print(f"{self.node_name}: Account already initialized with balance {initial_balance}.")
+            return initial_balance
         print(f"{self.node_name}: Account initialized with balance {initial_balance}.")
-        """else:
-            print(f"{self.node_name}: Account file already exists. Skipping initialization.")"""
+        return self._write_account(initial_balance)
+
+    def get_balance(self):
+        """Public method to expose the current account balance.""" 
+        balance = self._read_account()
+        return balance if balance is not None else 0
+
+    def simulation_case(self, case):
+        self.case = case
+        return True
 
     def _read_account(self):
         """Read account balance from the file."""
         try:
             with open(self.account_file, "r") as f:
-                return int(f.read().strip())
+                return float(f.read().strip())  # Use float instead of int
         except FileNotFoundError:
             return None  # Account does not exist
+
 
     def _write_account(self, balance):
         """Write account balance to the file."""
         try:
             with open(self.account_file, "w") as f:
-                f.write(str(balance))
+                f.write(f"{balance:.2f}")  # Write as float with 2 decimal places
         except IOError as e:
             print(f"{self.node_name}: Error writing account balance. {e}")
             return False
@@ -44,6 +55,10 @@ class NodeBase:
         self.state = "PREPARED"
         self.pending_transaction = (transaction_id, amount)
         balance = self._read_account()
+
+        if self.case == 1 and self.node_name == "Node-2":
+            time.sleep(30) # Node-2 crashes (does not respond to coordinator)
+
         if balance is None:
             print(f"{self.node_name}: Account does not exist for transaction {transaction_id}.")
             return False
@@ -55,6 +70,10 @@ class NodeBase:
 
     def commit(self, transaction_id):
         """Commit the transaction."""
+
+        if self.case == 2 and self.node_name == "Node-2":
+            time.sleep(30) # Node-2 crashes (does not respond to coordinator)
+
         print(f"{self.node_name}: Received commit request for transaction {transaction_id}.")
         if self.state == "PREPARED" and self.pending_transaction and self.pending_transaction[0] == transaction_id:
             _, amount = self.pending_transaction
@@ -74,6 +93,10 @@ class NodeBase:
 
     def abort(self, transaction_id):
         """Abort the transaction."""
+
+        if self.case == 2 and self.node_name == "Node-2":
+            time.sleep(30) # Node-2 crashes (does not respond to coordinator)
+
         print(f"{self.node_name}: Received abort request for transaction {transaction_id}.")
         if self.state == "PREPARED" and self.pending_transaction and self.pending_transaction[0] == transaction_id:
             self.state = "ABORTED"

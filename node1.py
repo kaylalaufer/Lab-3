@@ -97,6 +97,7 @@ def start_coordinator():
     coordinator = Coordinator(account_to_node)
     server = SimpleXMLRPCServer(("localhost", 8000))
     server.register_instance(coordinator)
+    server.logRequests = False  # Disable request logging
     print("Coordinator (Node-0) started and waiting for requests...")
     server.serve_forever()
 
