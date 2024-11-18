@@ -11,7 +11,6 @@ class NodeBase:
         self.case = 0
         self.state = None
         self.pending_transaction = None
-        self.shutdown_callback = None  # Callback to trigger the shutdown of the server
         self.coordinator = xmlrpc.client.ServerProxy(coordinator_endpoint) if coordinator_endpoint else None
         self.peers = {name: xmlrpc.client.ServerProxy(endpoint) for name, endpoint in (peer_endpoints or {}).items()}
 
@@ -36,13 +35,10 @@ class NodeBase:
         """Read account balance from the file."""
         try:
             with open(self.account_file, "r") as f:
-                return float(f.read().strip())
+                return float(f.read().strip())  # Use float instead of int
         except FileNotFoundError:
-            print(f"{self.node_name}: Account file not found.")
-            return None
-        except Exception as e:
-            print(f"{self.node_name}: Unexpected error while reading account: {e}")
-            return None
+            return None  # Account does not exist
+
 
     def _write_account(self, balance):
         """Write account balance to the file."""
@@ -113,15 +109,20 @@ class NodeBase:
         self.state = None  # Reset state after abort
         return True
 
-    def set_shutdown_callback(self, callback):
-        """Register a callback to trigger the XMLRPC server shutdown."""
-        self.shutdown_callback = callback
-
     def shutdown(self):
-        """Gracefully handle shutdown requests."""
-        print(f"{self.node_name}: Received shutdown signal.")
-        if self.shutdown_callback:
-            print(f"{self.node_name}: Shutting down the server.")
-            self.shutdown_callback()  # Trigger server shutdown in the main script
-        else:
-            print(f"{self.node_name}: No shutdown callback defined.")
+        """Handle graceful shutdown."""
+        print(f"{self.node_name}: Shutdown initiated.")
+        
+        # Complete or abort pending transactions
+        if self.state == "PREPARED" and self.pending_transaction:
+            transaction_id, _ = self.pending_transaction
+            print(f"{self.node_name}: Aborting pending transaction {transaction_id} during shutdown.")
+            self.abort(transaction_id)
+        
+        self.state = None
+        self.pending_transaction = None
+        print(f"{self.node_name}: Graceful shutdown complete.")
+        
+        # Add delay to allow the coordinator to finish communication
+        time.sleep(2)
+        os._exit(0)  # Force termination of the server
