@@ -1,6 +1,7 @@
 import os
 import xmlrpc.client
 import time
+import sys
 
 class NodeBase:
     def __init__(self, account_file, initial_balance, node_name, coordinator_endpoint=None, peer_endpoints=None):
@@ -10,6 +11,7 @@ class NodeBase:
         self.case = 0
         self.state = None
         self.pending_transaction = None
+        self.shutdown_callback = None  # Callback to trigger the shutdown of the server
         self.coordinator = xmlrpc.client.ServerProxy(coordinator_endpoint) if coordinator_endpoint else None
         self.peers = {name: xmlrpc.client.ServerProxy(endpoint) for name, endpoint in (peer_endpoints or {}).items()}
 
@@ -34,10 +36,13 @@ class NodeBase:
         """Read account balance from the file."""
         try:
             with open(self.account_file, "r") as f:
-                return float(f.read().strip())  # Use float instead of int
+                return float(f.read().strip())
         except FileNotFoundError:
-            return None  # Account does not exist
-
+            print(f"{self.node_name}: Account file not found.")
+            return None
+        except Exception as e:
+            print(f"{self.node_name}: Unexpected error while reading account: {e}")
+            return None
 
     def _write_account(self, balance):
         """Write account balance to the file."""
@@ -107,3 +112,16 @@ class NodeBase:
             print(f"{self.node_name}: Cannot abort transaction {transaction_id}. Not in prepared state or transaction does not match.")
         self.state = None  # Reset state after abort
         return True
+
+    def set_shutdown_callback(self, callback):
+        """Register a callback to trigger the XMLRPC server shutdown."""
+        self.shutdown_callback = callback
+
+    def shutdown(self):
+        """Gracefully handle shutdown requests."""
+        print(f"{self.node_name}: Received shutdown signal.")
+        if self.shutdown_callback:
+            print(f"{self.node_name}: Shutting down the server.")
+            self.shutdown_callback()  # Trigger server shutdown in the main script
+        else:
+            print(f"{self.node_name}: No shutdown callback defined.")
