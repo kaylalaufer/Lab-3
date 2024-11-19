@@ -1,4 +1,4 @@
-import os
+import sys
 import xmlrpc.client
 import time
 import sys
@@ -13,6 +13,7 @@ class NodeBase:
         self.pending_transaction = None
         self.coordinator = xmlrpc.client.ServerProxy(coordinator_endpoint) if coordinator_endpoint else None
         self.peers = {name: xmlrpc.client.ServerProxy(endpoint) for name, endpoint in (peer_endpoints or {}).items()}
+        self.server_running = True
 
     def initialize_account(self, initial_balance=0):
         """Initialize the account file with a specified starting balance."""
@@ -109,8 +110,8 @@ class NodeBase:
         self.state = None  # Reset state after abort
         return True
 
-    def shutdown(self):
-        """Handle graceful shutdown."""
+    """def shutdown(self):
+        Handle graceful shutdown.
         print(f"{self.node_name}: Shutdown initiated.")
         
         # Complete or abort pending transactions
@@ -125,4 +126,4 @@ class NodeBase:
         
         # Add delay to allow the coordinator to finish communication
         time.sleep(2)
-        os._exit(0)  # Force termination of the server
+        sys.exit(0)  # Force termination of the server"""
