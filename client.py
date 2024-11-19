@@ -1,10 +1,11 @@
 import xmlrpc.client
 
+# Connect to the coordinator and nodes
+coordinator = xmlrpc.client.ServerProxy("http://localhost:8000")
+node2 = xmlrpc.client.ServerProxy("http://localhost:8001")
+node3 = xmlrpc.client.ServerProxy("http://localhost:8002")
+
 def transactions(initial_a=200, initial_b=300, case=0):
-    # Connect to the coordinator and nodes
-    coordinator = xmlrpc.client.ServerProxy("http://localhost:8000")
-    node2 = xmlrpc.client.ServerProxy("http://localhost:8001")
-    node3 = xmlrpc.client.ServerProxy("http://localhost:8002")
 
     # Initialize Accounts for case simulation
     print(f"Initializing Account A with balance: {initial_a}")
@@ -54,3 +55,5 @@ if __name__ == "__main__":
     # Expected:
     # Transaction 1: Aborted
     # Transaction 2: Committed
+
+    coordinator.shutdown()

@@ -1,19 +1,21 @@
-import sys
-import xmlrpc.client
 import time
-import sys
+import xmlrpc.client
+from xmlrpc.server import SimpleXMLRPCServer
+import threading
 
 class NodeBase:
-    def __init__(self, account_file, initial_balance, node_name, coordinator_endpoint=None, peer_endpoints=None):
+    def __init__(self, account_file, initial_balance, node_name, port, coordinator_endpoint=None, peer_endpoints=None):
         self.account_file = account_file
+        self.initial_balance = initial_balance
         self.node_name = node_name
-        self.initialize_account(initial_balance)
-        self.case = 0
-        self.state = None
-        self.pending_transaction = None
+        self.port = port
         self.coordinator = xmlrpc.client.ServerProxy(coordinator_endpoint) if coordinator_endpoint else None
         self.peers = {name: xmlrpc.client.ServerProxy(endpoint) for name, endpoint in (peer_endpoints or {}).items()}
         self.server_running = True
+        self.state = None
+        self.pending_transaction = None
+        self.case = 0
+        self.initialize_account()
 
     def initialize_account(self, initial_balance=0):
         """Initialize the account file with a specified starting balance."""
@@ -110,20 +112,32 @@ class NodeBase:
         self.state = None  # Reset state after abort
         return True
 
-    """def shutdown(self):
-        Handle graceful shutdown.
-        print(f"{self.node_name}: Shutdown initiated.")
-        
-        # Complete or abort pending transactions
-        if self.state == "PREPARED" and self.pending_transaction:
-            transaction_id, _ = self.pending_transaction
-            print(f"{self.node_name}: Aborting pending transaction {transaction_id} during shutdown.")
-            self.abort(transaction_id)
-        
-        self.state = None
-        self.pending_transaction = None
-        print(f"{self.node_name}: Graceful shutdown complete.")
-        
-        # Add delay to allow the coordinator to finish communication
-        time.sleep(2)
-        sys.exit(0)  # Force termination of the server"""
+    def shutdown(self):
+        """Stop the server gracefully."""
+        print(f"{self.node_name}: Remote shutdown requested.")
+        self.server_running = False
+        print(f"{self.node_name}: Server stopping gracefully.")
+        return "Shutdown initiated"
+
+    def run_server(self):
+        """Run the XML-RPC server."""
+        def server_thread():
+            with SimpleXMLRPCServer(("localhost", self.port), allow_none=True) as server:
+                server.register_instance(self)  # Expose all methods in this class
+                server.logRequests = False
+                print(f"{self.node_name} started on port {self.port} and waiting for requests...")
+
+                while self.server_running:
+                    server.handle_request()  # Process one request at a time
+
+                print(f"{self.node_name}: Server has stopped.")
+
+        thread = threading.Thread(target=server_thread, daemon=True)
+        thread.start()
+
+        try:
+            while self.server_running:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print(f"\n{self.node_name}: Shutdown signal received. Exiting...")
+            self.shutdown()
