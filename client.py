@@ -56,4 +56,4 @@ if __name__ == "__main__":
     # Transaction 1: Aborted
     # Transaction 2: Committed
 
-    coordinator.shutdown()
+    #coordinator.shutdown()
