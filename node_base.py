@@ -16,10 +16,33 @@ class NodeBase:
         self.pending_transaction = None
         self.case = 0
         self.roll_back = None # Transaction ID, amount in account before transaction
+        self.last_activity = time.time()  # Timestamp of the last activity
+        self.inactivity_threshold = 20  # Time in seconds before initiating recovery
+        self._start_inactivity_thread()  # Start inactivity monitoring
+        self.log = {}
         self.initialize_account()
+        self.prev_txn = None
+
+    def _start_inactivity_thread(self):
+        """Start a background thread to monitor inactivity."""
+        def monitor_inactivity():
+            while self.server_running:
+                time.sleep(5)  # Check inactivity every 5 seconds
+                if time.time() - self.last_activity > self.inactivity_threshold:
+                    print(f"{self.node_name}: Inactivity detected. Initiating recovery.")
+                    self.recover()  # Trigger recovery
+                    self.last_activity = time.time()  # Reset inactivity after recovery
+
+        thread = threading.Thread(target=monitor_inactivity, daemon=True)
+        thread.start()
+
+    def _update_last_activity(self):
+        """Update the timestamp for the last activity."""
+        self.last_activity = time.time()
 
     def initialize_account(self, initial_balance=0):
         """Initialize the account file with a specified starting balance."""
+        self._update_last_activity()  # Mark activity
         if self._read_account() == initial_balance:
             print(f"{self.node_name}: Account already initialized with balance {initial_balance}.")
             return initial_balance
@@ -56,6 +79,7 @@ class NodeBase:
 
     def prepare(self, transaction_id, amount):
         """Prepare phase: validate the transaction."""
+        self._update_last_activity()  # Mark activity
         print(f"{self.node_name}: Received prepare request for transaction {transaction_id} with amount {amount}.")
         # Check for unclean state
         if self.state is not None:
@@ -94,11 +118,13 @@ class NodeBase:
 
     def commit(self, transaction_id):
         """Commit the transaction."""
-
+        self.prev_txn = transaction_id
+        self._update_last_activity()  # Mark activity
+        print(f"{self.node_name}: Received commit request for transaction {transaction_id}.")
+        self.log[transaction_id] = "COMMITTED"
         if self.case == 2 and self.node_name == "Node-2":
             time.sleep(30) # Node-2 crashes (does not respond to coordinator)
 
-        print(f"{self.node_name}: Received commit request for transaction {transaction_id}.")
         if self.state == "PREPARED" and self.pending_transaction and self.pending_transaction[0] == transaction_id:
             _, amount = self.pending_transaction
             balance = self._read_account()
@@ -118,9 +144,9 @@ class NodeBase:
 
     def abort(self, transaction_id):
         """Abort the transaction."""
-
-        """if self.case == 2 and self.node_name == "Node-2":
-            time.sleep(10) # Node-2 crashes (does not respond to coordinator)"""
+        self.prev_txn = transaction_id
+        self.log[transaction_id] = "ABORTED"
+        self._update_last_activity()  # Mark activity
 
         print(f"{self.node_name}: Received abort request for transaction {transaction_id}.")
         if self.state == "PREPARED" and self.pending_transaction and self.pending_transaction[0] == transaction_id:
@@ -128,17 +154,19 @@ class NodeBase:
             self.pending_transaction = None
             print(f"{self.node_name}: Transaction {transaction_id} aborted.")
         else:
+
             print(f"{self.state} {self.pending_transaction}")
             print(f"{self.node_name}: Cannot abort transaction {transaction_id}. Not in prepared state or transaction does not match.")
         self.state = None  # Reset state after abort
         return True
 
-    def roll_back(self, transaction_id):
+    def roll_back_state(self, transaction_id):
         """
         Roll back the account to its state before the transaction.
         :param transaction_id: The ID of the transaction to roll back.
         :return: True if rollback succeeded, False otherwise.
         """
+        self._update_last_activity()  # Mark activity
         if not self.roll_back:
             print(f"{self.node_name}: No rollback state available. Nothing to roll back.")
             return False
@@ -156,12 +184,70 @@ class NodeBase:
         return True
 
     def recover(self):
+        """Recover the node's state after inactivity or crash."""
+        print(f"{self.node_name}: Starting recovery process.")
+
+        if self.pending_transaction:
+            transaction_id = self.pending_transaction[0]
+            state = self.state
+        elif self.prev_txn:
+            transaction_id = self.prev_txn
+            state = self.log[transaction_id]
+        else:
+            print(f"{self.node_name}: No recovery needed. State is clean.")
+            self.prev_txn = None # recovery already occurred, no need to keep checking
+            return 
+
+        try:
+            # Query the coordinator for the transaction outcome
+            outcome = self.coordinator.handle_recovering_node(transaction_id, self.node_name)
+            print(f"{self.node_name}: Coordinator outcome for transaction {transaction_id}: {outcome}")
+            print(f"{self.node_name}: Current state: {state}")
+
+            if state == outcome:
+                print(f"{self.node_name}: No recovery needed. State is clean.")
+                return 
+
+            if state == "PREPARED":
+                # Finalize based on coordinator's decision
+                if outcome == "COMMITTED":
+                    print(f"{self.node_name}: Commit confirmed. Finalizing transaction.")
+                    self.commit(transaction_id)
+                elif outcome == "ABORTED":
+                    print(f"{self.node_name}: Abort confirmed. Rolling back transaction.")
+                    self.abort(transaction_id)
+
+            elif state == "COMMITTED":
+                # Handle the edge case of a mismatch
+                if outcome == "ABORTED":
+                    print(f"{self.node_name}: Coordinator indicates abort. Rolling back transaction.")
+                    self.roll_back_state(transaction_id)
+
+            elif state == "ABORTED":
+                # Abort already finalized; no action needed
+                print(f"{self.node_name}: Transaction already aborted. No recovery needed.")
+
+            else:
+                # Unexpected state, log and assume abort for safety
+                print(f"{self.node_name}: Unexpected state {state}. Assuming abort for safety.")
+                self.abort(transaction_id)
+
+        except Exception as e:
+            # Handle failure to contact the coordinator
+            print(f"{self.node_name}: Failed to contact coordinator: {e}. Assuming abort.")
+            self.abort(transaction_id)
+            self.shutdown()
+
+
+
+    """def recover(self):
+
         if self.state == "PREPARED" and self.pending_transaction:
             print(f"{self.node_name}: Recovering from crash. Rolling back transaction {self.pending_transaction[0]}.")
             self.roll_back(self.pending_transaction[0])
         self.state = None
         self.pending_transaction = None
-        self.roll_back = None
+        self.roll_back = None"""
 
     def shutdown(self):
         """Stop the server gracefully."""
