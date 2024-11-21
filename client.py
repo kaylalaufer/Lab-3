@@ -5,13 +5,7 @@ coordinator = xmlrpc.client.ServerProxy("http://localhost:8000")
 node2 = xmlrpc.client.ServerProxy("http://localhost:8001")
 node3 = xmlrpc.client.ServerProxy("http://localhost:8002")
 
-def transactions(initial_a=200, initial_b=300, case=0):
-
-    # Initialize Accounts for case simulation
-    print(f"Initializing Account A with balance: {initial_a}")
-    node2.initialize_account(initial_a)
-    print(f"Initializing Account B with balance: {initial_b}")
-    node3.initialize_account(initial_b)
+def transaction1(case=0):
 
     # Set simulation case
     print(f"Setting simulation case to: {case}")
@@ -28,6 +22,13 @@ def transactions(initial_a=200, initial_b=300, case=0):
     txn1_result = coordinator.execute_transaction(transaction_id_1, txn1_details)
     print(f"Transaction 1 Result: {txn1_result}")
 
+def transaction2(case=0):
+
+    # Set simulation case
+    print(f"Setting simulation case to: {case}")
+    node2.simulation_case(case)
+    node3.simulation_case(case)
+
     # Transaction 2: Add a 20% bonus to A and B
     balance_a = node2.get_balance()  # Get Account A balance
     bonus = 0.2 * balance_a
@@ -43,15 +44,47 @@ def transactions(initial_a=200, initial_b=300, case=0):
 
 if __name__ == "__main__":
     # Case 1a
-    print("=== Running Case 1a ===")
-    transactions(200, 300, 0)
+    """print("=== Running Case 1a ===")
+
+    # Initialize Accounts for case simulation
+    print(f"Initializing Account A with balance: 200")
+    node2.initialize_account(200)
+    print(f"Initializing Account B with balance: 300")
+    node3.initialize_account(300)
+
+    transaction1(0)
+    transaction2(0)
+
     # Expected:
     # Transaction 1: Committed
     # Transaction 2: Committed
 
     # Case 1b
     print("=== Running Case 1b ===")
-    transactions(90, 50, 0)
+        
+    # Initialize Accounts for case simulation
+    print(f"Initializing Account A with balance: 90")
+    node2.initialize_account(90)
+    print(f"Initializing Account B with balance: 50")
+    node3.initialize_account(50)
+
+    transaction1(0)
+    transaction2(0)"""
+    # Expected:
+    # Transaction 1: Aborted
+    # Transaction 2: Committed
+
+     # Case 1c
+    print("=== Running Case 1c ===")
+        
+    # Initialize Accounts for case simulation
+    print(f"Initializing Account A with balance: 200")
+    node2.initialize_account(200)
+    print(f"Initializing Account B with balance: 300")
+    node3.initialize_account(300)
+
+    transaction1(2)
+    #transaction1(2)
     # Expected:
     # Transaction 1: Aborted
     # Transaction 2: Committed

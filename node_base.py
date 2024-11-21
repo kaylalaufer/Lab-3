@@ -15,6 +15,7 @@ class NodeBase:
         self.state = None
         self.pending_transaction = None
         self.case = 0
+        self.roll_back = None # Transaction ID, amount in account before transaction
         self.initialize_account()
 
     def initialize_account(self, initial_balance=0):
@@ -56,9 +57,28 @@ class NodeBase:
     def prepare(self, transaction_id, amount):
         """Prepare phase: validate the transaction."""
         print(f"{self.node_name}: Received prepare request for transaction {transaction_id} with amount {amount}.")
+        # Check for unclean state
+        if self.state is not None:
+            print(f"{self.node_name}: Unclean state detected! Current state: {self.state}")
+
+            # If the previous transaction was PREPARED but unresolved, roll it back
+            if self.state == "PREPARED" and self.pending_transaction:
+                prev_transaction_id, prev_balance = self.roll_back
+                print(f"{self.node_name}: Rolling back previous transaction {prev_transaction_id}.")
+                self._write_account(prev_balance)  # Restore the previous balance
+                self.state = None
+                self.pending_transaction = None
+                self.roll_back = None
+                print(f"{self.node_name}: Previous transaction rolled back successfully.")
+
+            # If the previous transaction is COMMITTED or ABORTED, do not roll back
+            elif self.state in ["COMMITTED", "ABORTED"]:
+                print(f"{self.node_name}: Transaction {transaction_id} rejected. Previous transaction already finalized.")
+                return False
         self.state = "PREPARED"
         self.pending_transaction = (transaction_id, amount)
         balance = self._read_account()
+        self.roll_back = (transaction_id, balance)
 
         if self.case == 1 and self.node_name == "Node-2":
             time.sleep(30) # Node-2 crashes (does not respond to coordinator)
@@ -93,13 +113,14 @@ class NodeBase:
             self.state = None  # Reset state after commit
             return True
         print(f"{self.node_name}: Cannot commit transaction {transaction_id}. Not in prepared state.")
+        self.state = None  # Reset state after commit
         return False
 
     def abort(self, transaction_id):
         """Abort the transaction."""
 
-        if self.case == 2 and self.node_name == "Node-2":
-            time.sleep(30) # Node-2 crashes (does not respond to coordinator)
+        """if self.case == 2 and self.node_name == "Node-2":
+            time.sleep(10) # Node-2 crashes (does not respond to coordinator)"""
 
         print(f"{self.node_name}: Received abort request for transaction {transaction_id}.")
         if self.state == "PREPARED" and self.pending_transaction and self.pending_transaction[0] == transaction_id:
@@ -111,6 +132,36 @@ class NodeBase:
             print(f"{self.node_name}: Cannot abort transaction {transaction_id}. Not in prepared state or transaction does not match.")
         self.state = None  # Reset state after abort
         return True
+
+    def roll_back(self, transaction_id):
+        """
+        Roll back the account to its state before the transaction.
+        :param transaction_id: The ID of the transaction to roll back.
+        :return: True if rollback succeeded, False otherwise.
+        """
+        if not self.roll_back:
+            print(f"{self.node_name}: No rollback state available. Nothing to roll back.")
+            return False
+
+        if self.roll_back[0] != transaction_id:
+            print(f"{self.node_name}: Rollback skipped. Transaction ID {transaction_id} does not match rollback state.")
+            return False
+
+        print(f"{self.node_name}: Rolling back transaction {transaction_id}.")
+        self._write_account(self.roll_back[1])  # Restore the previous balance
+        self.state = None  # Reset state
+        self.pending_transaction = None
+        self.roll_back = None  # Clear rollback state
+        print(f"{self.node_name}: Rollback completed for transaction {transaction_id}.")
+        return True
+
+    def recover(self):
+        if self.state == "PREPARED" and self.pending_transaction:
+            print(f"{self.node_name}: Recovering from crash. Rolling back transaction {self.pending_transaction[0]}.")
+            self.roll_back(self.pending_transaction[0])
+        self.state = None
+        self.pending_transaction = None
+        self.roll_back = None
 
     def shutdown(self):
         """Stop the server gracefully."""
