@@ -48,8 +48,10 @@ def execute_transaction(txn_a, txn_b):
     try:
         result = coordinator.execute_transaction(txn_id, txn_details)
         print(f"Client: Transaction result: {result}")
+        return True
     except Exception as e:
         print(f"Failed to contact coordinator: {e}.")
+        return False
 
 def scenarios(accout_a, account_b, case_number=0):
     if not initialize_nodes(accout_a, account_b):
@@ -62,7 +64,7 @@ def scenarios(accout_a, account_b, case_number=0):
         return False
 
     if case_number != 0:
-        time.sleep(10)
+        time.sleep(15)
 
     try: 
         balance_a = coordinator.get_account_balance("A")
@@ -85,7 +87,7 @@ if __name__ == "__main__":
     print("\n=== Running Case 1c.i ===\n")
     scenarios(200, 300, 1)
 
-    time.sleep(10)
+    time.sleep(15)
 
     print("\n=== Running Case 1c.ii ===\n")
     scenarios(200, 300, 2)
