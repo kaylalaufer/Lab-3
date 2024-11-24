@@ -1,106 +1,93 @@
 import xmlrpc.client
+import time
 
 # Connect to the coordinator and nodes
 coordinator = xmlrpc.client.ServerProxy("http://localhost:8000")
-node2 = xmlrpc.client.ServerProxy("http://localhost:8001")
-node3 = xmlrpc.client.ServerProxy("http://localhost:8002")
-
-def transaction1(case=0):
-
-    # Set simulation case
-    print(f"Setting simulation case to: {case}")
-    node2.simulation_case(case)
-    node3.simulation_case(case)
-
-    # Transaction 1: Transfer 100 dollars from account A to account B
-    transaction_id_1 = "txn1"
-    txn1_details = {
-        "A": -100,  # Withdraw 100 from Account A
-        "B": 100    # Deposit 100 into Account B
-    }
-    print(f"Executing Transaction 1 (ID: {transaction_id_1})")
-    txn1_result = coordinator.execute_transaction(transaction_id_1, txn1_details)
-    print(f"Transaction 1 Result: {txn1_result}")
-
-def transaction2(case=0):
-
-    # Set simulation case
-    print(f"Setting simulation case to: {case}")
-    node2.simulation_case(case)
-    node3.simulation_case(case)
-
-    # Transaction 2: Add a 20% bonus to A and B
-    balance_a = node2.get_balance()  # Get Account A balance
-    bonus = 0.2 * balance_a
-    transaction_id_2 = "txn2"
-    txn2_details = {
-        "A": bonus,  # Add bonus to Account A
-        "B": bonus   # Add same bonus to Account B
-    }
-    print(f"Executing Transaction 2 (ID: {transaction_id_2}) with bonus: {bonus}")
-    txn2_result = coordinator.execute_transaction(transaction_id_2, txn2_details)
-    print(f"Transaction 2 Result: {txn2_result}")
+transaction_id = 0
 
 def shutdown_coordinator():
     #coordinator = xmlrpc.client.ServerProxy("http://localhost:8000")
     try:
         print("Client: Sending shutdown request to the coordinator...")
+        time.sleep(10) # Delay to allow smoother clean up
         coordinator.shutdown()
         print("Client: Shutdown request sent successfully.")
     except Exception as e:
         print(f"Client: Failed to send shutdown request: {e}")
 
+def initialize_nodes(account_a=200, account_b=300):
+    """Initialize node balances via the Coordinator."""
+    try:
+        response_a = coordinator.initialize_node("A", account_a)
+        print(f"Account A: {account_a}")
+        response_b = coordinator.initialize_node("B", account_b)
+        print(f"Account B: {account_b}")
+        return True
+    except Exception as e:
+        print(f"Failed to contact coordinator: {e}.")
+        return False
+
+def set_simulation_case(case_number):
+    """Set a simulation case via the Coordinator."""
+    print(f"Client: Setting simulation case {case_number}.")
+    try:
+        response = coordinator.set_simulation_case(case_number)
+        return True
+    except Exception as e:
+        print(f"Failed to contact coordinator: {e}.")
+        return False
+
+def execute_transaction(txn_a, txn_b):
+    """Execute a transaction via the Coordinator."""
+    global transaction_id
+    transaction_id = transaction_id + 1
+    txn_id = "txn" + str(transaction_id)
+    print(f"\nClient: Executing transaction {txn_id}:")
+    txn_details = {"A": txn_a, "B": txn_b}  # Transfer 100 from A to B
+    print(f"  A: {txn_a}\n  B: {txn_b}")
+    try:
+        result = coordinator.execute_transaction(txn_id, txn_details)
+        print(f"Client: Transaction result: {result}")
+    except Exception as e:
+        print(f"Failed to contact coordinator: {e}.")
+
+def scenarios(accout_a, account_b, case_number=0):
+    if not initialize_nodes(accout_a, account_b):
+        return False
+    if case_number != 0:
+        if not set_simulation_case(case_number):
+            return False
+
+    if not execute_transaction(-100, 100):
+        return False
+
+    if case_number != 0:
+        time.sleep(10)
+
+    try: 
+        balance_a = coordinator.get_account_balance("A")
+        bonus = balance_a * 0.2
+        execute_transaction(bonus, bonus)
+        return True
+    except Exception as e:
+        print(f"Failed to contact coordinator: {e}.")
+        return False
+
+
 if __name__ == "__main__":
     # Case 1a
     print("=== Running Case 1a ===\n")
+    scenarios(200, 300, 0)
 
-    # Initialize Accounts for case simulation
-    print(f"Initializing Account A with balance: 200")
-    node2.initialize_account(200)
-    print(f"Initializing Account B with balance: 300\n")
-    node3.initialize_account(300)
-    print("\nTxn 1\n")
-    transaction1(0)
-    print("\nTxn 2\n")
-    transaction2(0)
-
-    # Expected:
-    # Transaction 1: Committed
-    # Transaction 2: Committed
-
-    # Case 1b
     print("\n=== Running Case 1b ===\n")
-        
-    # Initialize Accounts for case simulation
-    print(f"Initializing Account A with balance: 90")
-    node2.initialize_account(90)
-    print(f"Initializing Account B with balance: 50\n")
-    node3.initialize_account(50)
+    scenarios(90, 50, 0)
 
-    print("\nTxn 1\n")
-    transaction1(0)
-    print("\nTxn 2\n")
-    transaction2(0)
-    # Expected:
-    # Transaction 1: Aborted
-    # Transaction 2: Committed
+    print("\n=== Running Case 1c.i ===\n")
+    scenarios(200, 300, 1)
 
-     # Case 1c
-    print("\n=== Running Case 1c ===\n")
-        
-    # Initialize Accounts for case simulation
-    print(f"Initializing Account A with balance: 200")
-    node2.initialize_account(200)
-    print(f"Initializing Account B with balance: 300")
-    node3.initialize_account(300)
+    time.sleep(10)
 
-    print("\nTxn 1 - Node 2 fails in Prepare phase\n")
-    transaction1(1)
+    print("\n=== Running Case 1c.ii ===\n")
+    scenarios(200, 300, 2)
 
-    print("\nTxn 1 - Node 2 fails in Commit phase\n")
-    transaction1(2)
-    # Expected:
-    # Transaction 1: Aborted
-    # Transaction 2: Committed
-
-    shutdown_coordinator()
+   
