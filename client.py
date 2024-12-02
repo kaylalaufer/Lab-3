@@ -91,5 +91,4 @@ if __name__ == "__main__":
 
     print("\n=== Running Case 1c.ii ===\n")
     scenarios(200, 300, 2)
-
    
