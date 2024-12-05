@@ -5,18 +5,9 @@ import time
 coordinator = xmlrpc.client.ServerProxy("http://localhost:8000")
 transaction_id = 0
 
-def shutdown_coordinator():
-    #coordinator = xmlrpc.client.ServerProxy("http://localhost:8000")
-    try:
-        print("Client: Sending shutdown request to the coordinator...")
-        time.sleep(10) # Delay to allow smoother clean up
-        coordinator.shutdown()
-        print("Client: Shutdown request sent successfully.")
-    except Exception as e:
-        print(f"Client: Failed to send shutdown request: {e}")
-
 def initialize_nodes(account_a=200, account_b=300):
     """Initialize node balances via the Coordinator."""
+    # Used for testing
     try:
         response_a = coordinator.initialize_node("A", account_a)
         print(f"Account A: {account_a}")
@@ -29,6 +20,7 @@ def initialize_nodes(account_a=200, account_b=300):
 
 def set_simulation_case(case_number):
     """Set a simulation case via the Coordinator."""
+    # Used for testing
     print(f"Client: Setting simulation case {case_number}.")
     try:
         response = coordinator.set_simulation_case(case_number)
@@ -54,6 +46,7 @@ def execute_transaction(txn_a, txn_b):
         return False
 
 def scenarios(accout_a, account_b, case_number=0):
+    """Sets up the scenarios for each test case."""
     if not initialize_nodes(accout_a, account_b):
         return False
     if case_number != 0:
@@ -63,9 +56,9 @@ def scenarios(accout_a, account_b, case_number=0):
     if not execute_transaction(-100, 100):
         return False
 
-    if case_number != 0:
+    if case_number != 0: # Wait between crashed node cases to allow the coordinator to clean up
         time.sleep(15)
-
+        
     try: 
         balance_a = coordinator.get_account_balance("A")
         bonus = balance_a * 0.2
@@ -77,18 +70,23 @@ def scenarios(accout_a, account_b, case_number=0):
 
 
 if __name__ == "__main__":
-    # Case 1a
     print("=== Running Case 1a ===\n")
     scenarios(200, 300, 0)
+    # Commit, Commit
 
     print("\n=== Running Case 1b ===\n")
     scenarios(90, 50, 0)
+    # Abort, Commit
 
     print("\n=== Running Case 1c.i ===\n")
+    # Node-2 crashes in prepare phase
     scenarios(200, 300, 1)
+    # Abort, Abort
 
     time.sleep(15)
 
     print("\n=== Running Case 1c.ii ===\n")
+    # Node-2 crashes in commit phase
     scenarios(200, 300, 2)
+    # Abort, Abort
    

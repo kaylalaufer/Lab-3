@@ -30,6 +30,7 @@ class Coordinator:
         self.inactivity_thread.start()  # Start the thread
 
     def is_alive(self):
+        """Returns True when Participant pings the Coordinator."""
         return True
 
     def _call_with_timeout(self, func, *args, timeout=5):
@@ -46,6 +47,7 @@ class Coordinator:
 
     def initialize_node(self, account, balance):
         """Initialize a node's account balance."""
+        # Used for test cases
         self.last_activity = time.time()
         participant = self.participants.get(account)
         if participant:
@@ -61,6 +63,7 @@ class Coordinator:
 
     def set_simulation_case(self, case_number):
         """Set a simulation case for all nodes."""
+        # Used for test cases
         self.last_activity = time.time()
         results = {}
         for account, participant in self.participants.items():
@@ -74,6 +77,7 @@ class Coordinator:
 
     def get_account_balance(self, account):
         """Get account balance."""
+        # Used for test cases
         self.last_activity = time.time()
         participant = self.participants.get(account)
         if participant:
@@ -87,30 +91,32 @@ class Coordinator:
             return False
 
     def execute_transaction(self, transaction_id, transactions, timeout=5):
+        """Recieve a transaction from the client. Entering 2PC."""
         self.last_activity = time.time()
         print(f"Coordinator: Starting transaction {transaction_id} for {transactions}.")
-        if self.shutting_down:
+        if self.shutting_down: # Rejects transaction if coordinator is already shutting down
             print(f"Coordinator: Rejecting transaction {transaction_id} as the coordinator is shutting down.")
             return "Coordinator is shutting down. No new transactions are accepted."
+
         # Phase 1: Prepare
         prepared_nodes = []  # Track nodes that successfully prepare
         prepare_responses = {}
         for account, amount in transactions.items():
             participant = self.participants.get(account)
-            if not participant:
+            if not participant: # Node doesn't exist
                 print(f"Coordinator: No participant found for account {account}.")
                 prepare_responses[account] = False
                 continue
 
             response = self._call_with_timeout(participant.prepare, transaction_id, amount, timeout=timeout)
-            if response is None:
+            if response is None: # Node crashes
                 print(f"Coordinator: Timeout during prepare for account {account}.")
                 prepare_responses[account] = False
-            else:
+            else: # Response is received
                 prepare_responses[account] = response
                 prepared_nodes.append(account)
 
-        if not all(prepare_responses.values()):
+        if not all(prepare_responses.values()): # Abort transaction
             print(f"Coordinator: Prepare phase failed for transaction {transaction_id}. Aborting.")
             self._send_abort(transaction_id, prepared_nodes)
             self.transaction_log[transaction_id] = "ABORTED"  # Log the result
@@ -119,29 +125,31 @@ class Coordinator:
         # Phase 2: Commit
         print(f"Coordinator: All participants prepared. Sending commit requests.")
         self.last_activity = time.time()
-        commit_nodes = []
+        commit_nodes = [] # Track nodes that successfully commit
         commit_responses = {}
         for account in transactions.keys():
             participant = self.participants.get(account)
             response = self._call_with_timeout(participant.commit, transaction_id, timeout=timeout)
-            if response is None:
+            if response is None: # Node crashed
                 print(f"Coordinator: Timeout during commit for account {account}.")
                 commit_responses[account] = False
-            else:
+            else: # Response is received
                 commit_responses[account] = response
                 commit_nodes.append(account)
 
-        if not all(commit_responses.values()):
+        if not all(commit_responses.values()): # Rollback phase - transaction is now aborted
             print(f"Coordinator: Commit phase failed. Rolling back all participants.")
             self._roll_back_all(transaction_id, commit_nodes)
             self.transaction_log[transaction_id] = "ABORTED"  # Log the result
             return "Transaction Aborted"
 
+        # Transaction successfully committed
         print(f"Coordinator: Transaction {transaction_id} committed successfully.")
         self.transaction_log[transaction_id] = "COMMITTED"  # Log the result
         return "Transaction Committed"
 
     def _send_abort(self, transaction_id, accounts):
+        """Transaction is aborted."""
         self.last_activity = time.time()
         for account in accounts:
             participant = self.participants.get(account)
@@ -149,6 +157,7 @@ class Coordinator:
                 participant.abort(transaction_id)
 
     def _roll_back_all(self, transaction_id, accounts):
+        """Transaction is rolled back to previous state."""
         self.last_activity = time.time()
         for account in accounts:    
             participant = self.participants.get(account)
@@ -189,9 +198,9 @@ def start_coordinator():
     account_to_node = {
         "A": "http://localhost:8001",
         "B": "http://localhost:8002"
-    }
+    } # In the cloud, change 'localhost' to the internal IP of the participant
     coordinator = Coordinator(account_to_node)
-    server = SimpleXMLRPCServer(("localhost", 8000), allow_none=True)
+    server = SimpleXMLRPCServer(("localhost", 8000), allow_none=True) # In the cloud, change 'localhost' to the internal IP of coordinator
     server.register_instance(coordinator)
     server.logRequests = False
 
@@ -200,7 +209,7 @@ def start_coordinator():
         while not coordinator.shutdown_event.is_set():
             # Use a timeout to avoid indefinite blocking
             server.timeout = 1
-            server.handle_request()  # Handle one request at a time
+            server.handle_request()  
     except KeyboardInterrupt:
         print("\nCoordinator: Shutdown signal received.")
     finally:

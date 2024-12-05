@@ -6,9 +6,10 @@ def start_node3():
         initial_balance=300,
         node_name="Node-3",
         port=8002,
+        host="localhost",
         coordinator_endpoint="http://localhost:8000",
         peer_endpoints={"Node 2": "http://localhost:8001"}
-    )
+    ) # In the cloud, update 'localhost' to the correct internal IP of participant/coordinator
     node.run_server()
 
 if __name__ == "__main__":

@@ -4,7 +4,8 @@ from xmlrpc.server import SimpleXMLRPCServer
 import threading
 
 class NodeBase:
-    def __init__(self, account_file, initial_balance, node_name, port, coordinator_endpoint=None, peer_endpoints=None):
+    def __init__(self, account_file, initial_balance, node_name, port, host="localhost", coordinator_endpoint=None, peer_endpoints=None):
+        self.host = host
         self.account_file = account_file
         self.initial_balance = initial_balance
         self.node_name = node_name
@@ -12,15 +13,15 @@ class NodeBase:
         self.coordinator = xmlrpc.client.ServerProxy(coordinator_endpoint) if coordinator_endpoint else None
         self.peers = {name: xmlrpc.client.ServerProxy(endpoint) for name, endpoint in (peer_endpoints or {}).items()}
         self.server_running = True
-        self.state = None
-        self.pending_transaction = None
-        self.case = 0
+        self.state = None # PREPARE, COMMITTED, or ABORTED
+        self.pending_transaction = None # Current transaction ID
+        self.case = 0 # Used for simulating crashed nodes
         self.roll_back = None # Transaction ID, amount in account before transaction
         self.last_activity = time.time()  # Timestamp of the last activity
         self.inactivity_threshold = 15  # Time in seconds before initiating recovery
         self._start_inactivity_thread()  # Start inactivity monitoring
-        self.log = {}
-        self.prev_txn = None
+        self.log = {} # Log of all transactions: {txn ID: result, verified}
+        self.prev_txn = None # Previous transaction ID
 
     def _start_inactivity_thread(self):
         """Start a background thread to monitor inactivity."""
@@ -29,7 +30,7 @@ class NodeBase:
                 time.sleep(5)  # Check inactivity every 5 seconds
                 if time.time() - self.last_activity > self.inactivity_threshold:
                     print(f"{self.node_name}: Inactivity detected. Initiating recovery.")
-                    self.ping_coordinator()
+                    self.ping_coordinator() # Check if coordinator is still active, shutdown if not
                     self.recover()  # Trigger recovery
                     self.last_activity = time.time()  # Reset inactivity after recovery
 
@@ -41,6 +42,7 @@ class NodeBase:
         self.last_activity = time.time()
 
     def ping_coordinator(self):
+        """Check if coordinator is still alive."""
         try:
             self.coordinator.is_alive()
         except Exception as e:
@@ -62,6 +64,7 @@ class NodeBase:
         return balance if balance is not None else 0
 
     def simulation_case(self, case):
+        """Set simulation case for testing."""
         self.case = case
         return True
 
@@ -69,7 +72,7 @@ class NodeBase:
         """Read account balance from the file."""
         try:
             with open(self.account_file, "r") as f:
-                return float(f.read().strip())  # Use float instead of int
+                return float(f.read().strip())  
         except FileNotFoundError:
             return None  # Account does not exist
 
@@ -113,7 +116,6 @@ class NodeBase:
 
         if self.case == 1 and self.node_name == "Node-2":
             time.sleep(20) # Node-2 crashes (does not respond to coordinator)
-            #self.recover()  # Trigger recovery
 
         if balance is None:
             print(f"{self.node_name}: Account does not exist for transaction {transaction_id}.")
@@ -132,7 +134,6 @@ class NodeBase:
         self.log[transaction_id] = ("COMMITTED", False)
         if self.case == 2 and self.node_name == "Node-2":
             time.sleep(20) # Node-2 crashes (does not respond to coordinator)
-            #self.recover()  # Trigger recovery
 
         if self.state == "PREPARED" and self.pending_transaction and self.pending_transaction[0] == transaction_id:
             _, amount = self.pending_transaction
@@ -163,18 +164,15 @@ class NodeBase:
             self.pending_transaction = None
             print(f"{self.node_name}: Transaction {transaction_id} aborted.")
         else:
-
             print(f"{self.state} {self.pending_transaction}")
             print(f"{self.node_name}: Cannot abort transaction {transaction_id}. Not in prepared state or transaction does not match.")
+            self.state = None  # Reset state after abort
+            return False
         self.state = None  # Reset state after abort
         return True
 
     def roll_back_state(self, transaction_id):
-        """
-        Roll back the account to its state before the transaction.
-        :param transaction_id: The ID of the transaction to roll back.
-        :return: True if rollback succeeded, False otherwise.
-        """
+        """Roll back the account to its state before the transaction."""
         self._update_last_activity()  # Mark activity
         if not self.roll_back:
             print(f"{self.node_name}: No rollback state available. Nothing to roll back.")
@@ -266,7 +264,7 @@ class NodeBase:
     def run_server(self):
         """Run the XML-RPC server."""
         def server_thread():
-            with SimpleXMLRPCServer(("localhost", self.port), allow_none=True) as server:
+            with SimpleXMLRPCServer((self.host, self.port), allow_none=True) as server:
                 server.register_instance(self)  # Expose all methods in this class
                 server.logRequests = False
                 print(f"{self.node_name} started on port {self.port} and waiting for requests...")
