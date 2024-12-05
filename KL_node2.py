@@ -1,4 +1,4 @@
-from node_base import NodeBase
+from KL_node_base import NodeBase
 
 def start_node2():
     node = NodeBase(
